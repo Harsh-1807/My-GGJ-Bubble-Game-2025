@@ -1,0 +1,632 @@
+<!DOCTYPE html> 
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Greedy Bubble Game - Advanced</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #2c3e50;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: 'Arial', sans-serif;
+            color: white;
+        }
+        #gameCanvas {
+            border: 4px solid #34495e;
+            border-radius: 15px;
+            background: linear-gradient(45deg, #3498db, #2980b9);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+        }
+        #gameOverlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            padding: 10px;
+            display: flex;
+            justify-content: space-between;
+            pointer-events: none;
+        }
+        #pauseScreen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            color: white;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <div id="gameOverlay">
+        <div id="scoreDisplay">Score: 0</div>
+        <div id="healthDisplay">Health: 100</div>
+        <div id="levelDisplay">Level: 1</div>
+    </div>
+    <div id="pauseScreen">
+        <h1>GAME PAUSED</h1>
+        <p>Press 'P' to resume</p>
+    </div>
+    <script>
+class GreedyBubbleGame {
+    constructor() {
+        this.canvas = document.getElementById('gameCanvas');
+        this.ctx = this.canvas.getContext('2d');
+        this.scoreDisplay = document.getElementById('scoreDisplay');
+        this.healthDisplay = document.getElementById('healthDisplay');
+        this.levelDisplay = document.getElementById('levelDisplay');
+        this.pauseScreen = document.getElementById('pauseScreen');
+        
+        this.setupCanvas();
+        this.initializeGame();
+        this.setupEventListeners();
+    }
+
+    setupCanvas() {
+        this.canvas.width = window.innerWidth * 0.9;
+        this.canvas.height = window.innerHeight * 0.9;
+        window.addEventListener('resize', () => this.resizeCanvas());
+    }
+
+    resizeCanvas() {
+        this.canvas.width = window.innerWidth * 0.9;
+        this.canvas.height = window.innerHeight * 0.9;
+    }
+
+    initializeGame() {
+        this.score = 0;
+        this.level = 1;
+        this.health = 100;
+        this.speed = 2;
+        this.isPaused = false;
+        this.playerBubble = new PlayerBubble(this.canvas.width / 2, this.canvas.height / 2, 30);
+        this.bubbles = [];
+        this.sharps = [];
+        this.powerUps = [];
+        this.walls = [];
+        this.traps = [];
+        this.gameActive = true;
+        this.specialEffects = [];
+
+        this.spawnIntervals = {
+            bubble: setInterval(() => this.spawnBubble(), 1500),
+            sharp: setInterval(() => this.spawnSharp(), 2000),
+            powerUp: setInterval(() => this.spawnPowerUp(), 5000),
+            wall: setInterval(() => this.spawnWall(), 3000),
+            trap: setInterval(() => this.spawnTrap(), 4000)
+        };
+
+        this.path = this.generatePath();
+        this.animate();
+    }
+
+    generatePath() {
+        return [
+            { x1: this.canvas.width * 0.2, y1: this.canvas.height * 0.2, x2: this.canvas.width * 0.5, y2: this.canvas.height * 0.5 },
+            { x1: this.canvas.width * 0.4, y1: this.canvas.height * 0.6, x2: this.canvas.width * 0.7, y2: this.canvas.height * 0.8 }
+        ];
+    }
+
+    spawnBubble() {
+        // More random bubble spawning
+        if (Math.random() < 0.3) return; // Random chance of not spawning
+        const minSize = 10;
+        const maxSize = 50;
+        const size = Math.random() * (maxSize - minSize) + minSize;
+        const x = Math.random() * this.canvas.width;
+        const y = Math.random() * this.canvas.height;
+        const bubble = new Bubble(x, y, size, this.speed, Math.random() < 0.2); // 20% chance of being a rogue bubble
+        this.bubbles.push(bubble);
+    }
+
+    spawnSharp() {
+        const size = 20;
+        const x = Math.random() * this.canvas.width;
+        const y = Math.random() * this.canvas.height;
+        const sharp = new SharpObstacle(x, y, size, this.speed);
+        this.sharps.push(sharp);
+    }
+
+    spawnPowerUp() {
+        const powerUpTypes = [
+            { type: 'grow', color: 'rgba(39, 174, 96, 0.8)' },
+            { type: 'shield', color: 'rgba(52, 152, 219, 0.8)' },
+            { type: 'speed', color: 'rgba(241, 196, 15, 0.8)' }
+        ];
+        const selectedType = powerUpTypes[Math.floor(Math.random() * powerUpTypes.length)];
+        const size = 15;
+        const x = Math.random() * this.canvas.width;
+        const y = Math.random() * this.canvas.height;
+        const powerUp = new PowerUp(x, y, size, selectedType);
+        this.powerUps.push(powerUp);
+    }
+
+    spawnWall() {
+        const size = 100;
+        const x = Math.random() * this.canvas.width;
+        const y = Math.random() * this.canvas.height;
+        const direction = Math.random() > 0.5 ? 1 : -1;
+        const wall = new MovingWall(x, y, size, direction, this.speed);
+        this.walls.push(wall);
+    }
+
+    spawnTrap() {
+        const size = 30;
+        const x = Math.random() * this.canvas.width;
+        const y = Math.random() * this.canvas.height;
+        const trap = new Trap(x, y, size);
+        this.traps.push(trap);
+    }
+
+    setupEventListeners() {
+        this.canvas.addEventListener('mousemove', (e) => {
+            const rect = this.canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+            this.playerBubble.updatePosition(mouseX, mouseY);
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'p' || e.key === 'P') {
+                this.togglePause();
+            }
+        });
+    }
+
+    togglePause() {
+        this.isPaused = !this.isPaused;
+        this.pauseScreen.style.display = this.isPaused ? 'flex' : 'none';
+    }
+
+    createSpecialEffect(x, y, type) {
+        const effect = {
+            x, y, type, 
+            opacity: 1, 
+            radius: 10,
+            update() {
+                this.radius += 2;
+                this.opacity -= 0.05;
+            },
+            draw(ctx) {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, 2 * Math.PI);
+                ctx.fillStyle = `rgba(255, 255, 255, ${this.opacity})`;
+                ctx.fill();
+            }
+        };
+        this.specialEffects.push(effect);
+    }
+
+    animate() {
+        if (!this.gameActive || this.isPaused) {
+            requestAnimationFrame(() => this.animate());
+            return;
+        }
+
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+        // Background effect
+        this.ctx.fillStyle = 'rgba(52, 152, 219, 0.1)';
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+        // Update and draw special effects
+        this.specialEffects.forEach((effect, index) => {
+            effect.update();
+            effect.draw(this.ctx);
+            if (effect.opacity <= 0) {
+                this.specialEffects.splice(index, 1);
+            }
+        });
+
+        // Update and draw player
+        this.playerBubble.update(this.canvas);
+        this.playerBubble.draw(this.ctx);
+
+        // Bubble management with more complex interactions
+        this.bubbles.forEach((bubble, index) => {
+            bubble.update(this.canvas);
+            bubble.draw(this.ctx);
+
+            // Rogue bubble despawning
+            if (bubble.isRogue && Math.random() < 0.4) {
+                this.bubbles.splice(index, 1);
+                return;
+            }
+
+            const distance = this.calculateDistance(this.playerBubble.x, this.playerBubble.y, bubble.x, bubble.y);
+            if (distance < this.playerBubble.size + bubble.size) {
+                if (this.playerBubble.size > bubble.size) {
+                    this.playerBubble.grow(bubble.size / 5);
+                    this.createSpecialEffect(bubble.x, bubble.y, 'absorption');
+                    this.bubbles.splice(index, 1);
+                    this.score += Math.floor(bubble.size);
+                    this.updateScoreDisplay();
+                } else {
+                    this.gameOver();
+                }
+            }
+        });
+
+        // Sharp obstacles
+        this.sharps.forEach((sharp, index) => {
+            sharp.update(this.canvas);
+            sharp.draw(this.ctx);
+
+            const distance = this.calculateDistance(this.playerBubble.x, this.playerBubble.y, sharp.x, sharp.y);
+            if (distance < this.playerBubble.size + sharp.size) {
+                this.health -= 10;
+                this.sharps.splice(index, 1);
+                this.createSpecialEffect(sharp.x, sharp.y, 'damage');
+                this.updateHealthDisplay();
+                if (this.health <= 0) {
+                    this.gameOver();
+                }
+            }
+        });
+
+        // Power-ups with multiple types
+        this.powerUps.forEach((powerUp, index) => {
+            powerUp.update(this.canvas);
+            powerUp.draw(this.ctx);
+
+            const distance = this.calculateDistance(this.playerBubble.x, this.playerBubble.y, powerUp.x, powerUp.y);
+            if (distance < this.playerBubble.size + powerUp.size) {
+                switch(powerUp.type) {
+                    case 'grow':
+                        this.playerBubble.grow(10);
+                        break;
+                    case 'shield':
+                        this.playerBubble.toggleShield(5000);
+                        break;
+                    case 'speed':
+                        this.playerBubble.boostSpeed(3000);
+                        break;
+                }
+                this.createSpecialEffect(powerUp.x, powerUp.y, 'powerup');
+                this.powerUps.splice(index, 1);
+            }
+        });
+
+        // Moving walls
+        this.walls.forEach((wall, index) => {
+            wall.update(this.canvas);
+            wall.draw(this.ctx);
+            if (wall.x < -wall.size || wall.x > this.canvas.width + wall.size) {
+                this.walls.splice(index, 1);
+                return;
+            }
+
+            const distance = this.calculateDistance(this.playerBubble.x, this.playerBubble.y, wall.x, wall.y);
+            if (distance < this.playerBubble.size + wall.size-0.03) {
+                this.gameOver();
+            }
+        });
+
+        // Traps with different behaviors
+        this.traps.forEach((trap, index) => {
+            trap.update(this.canvas);
+            trap.draw(this.ctx);
+
+            const distance = this.calculateDistance(this.playerBubble.x, this.playerBubble.y, trap.x, trap.y);
+            if (distance < this.playerBubble.size + trap.size) {
+                this.health -= 20;
+                this.traps.splice(index, 1);
+                this.createSpecialEffect(trap.x, trap.y, 'trap');
+                this.updateHealthDisplay();
+                if (this.health <= 0) {
+                    this.gameOver();
+                }
+            }
+        });
+
+        // Level progression
+        this.checkLevelProgression();
+
+        requestAnimationFrame(() => this.animate());
+    }
+
+    updateScoreDisplay() {
+        this.scoreDisplay.textContent = `Score: ${this.score}`;
+    }
+
+    updateHealthDisplay() {
+        this.healthDisplay.textContent = `Health: ${this.health}`;
+    }
+
+    checkLevelProgression() {
+        if (this.score >= 1000 && this.level < 2) {
+            this.levelUp(2, 3);
+        } else if (this.score >= 2000 && this.level < 3) {
+            this.levelUp(3, 4);
+        }
+    }
+
+    levelUp(newLevel, newSpeed) {
+        this.level = newLevel;
+        this.speed = newSpeed;
+        this.levelDisplay.textContent = `Level: ${this.level}`;
+        this.expandScene();
+        
+        // Increase spawn rates
+        Object.values(this.spawnIntervals).forEach(interval => clearInterval(interval));
+        this.spawnIntervals = {
+            bubble: setInterval(() => this.spawnBubble(), 1000),
+            sharp: setInterval(() => this.spawnSharp(), 1500),
+            powerUp: setInterval(() => this.spawnPowerUp(), 4000),
+            wall: setInterval(() => this.spawnWall(), 2500),
+            trap: setInterval(() => this.spawnTrap(), 3500)
+        };
+    }
+
+    expandScene() {
+        this.canvas.width *= 1.1;
+        this.canvas.height *= 1.1;
+        this.path.push({
+            x1: this.canvas.width * 0.6,
+            y1: this.canvas.height * 0.3,
+            x2: this.canvas.width * 0.8,
+            y2: this.canvas.height * 0.6
+        });
+    }
+
+    calculateDistance(x1, y1, x2, y2) {
+        return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
+    }
+
+    gameOver() {
+        this.gameActive = false;
+        clearInterval(this.spawnBubble);
+        alert(`Game Over! Final Score: ${this.score} | Level: ${this.level}`);
+    }
+}
+
+
+
+class PlayerBubble {
+    constructor(x, y, size) {
+        this.x = x;
+        this.y = y;
+        this.size = size;
+        this.shield = false;
+        this.shieldTimer = null;
+        this.speedBoost = false;
+        this.speedBoostTimer = null;
+        this.baseSpeed = 1;
+        this.currentSpeed = this.baseSpeed;
+    }
+
+    update(canvas) {
+        // Canvas boundary check
+        if (this.x + this.size > canvas.width) {
+            this.x = canvas.width - this.size;
+        } else if (this.x - this.size < 0) {
+            this.x = this.size;
+        }
+
+        if (this.y + this.size > canvas.height) {
+            this.y = canvas.height - this.size;
+        } else if (this.y - this.size < 0) {
+            this.y = this.size;
+        }
+    }
+
+    draw(ctx) {
+        // Base bubble
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, 2 * Math.PI);
+        ctx.fillStyle = this.shield ? 'rgba(52, 152, 219, 0.5)' : '#ecf0f1';
+        ctx.fill();
+
+        // Speed boost indicator
+        if (this.speedBoost) {
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.size * 1.2, 0, 2 * Math.PI);
+            ctx.strokeStyle = 'rgba(241, 196, 15, 0.5)';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+        }
+    }
+
+    updatePosition(mouseX, mouseY) {
+        this.x = mouseX;
+        this.y = mouseY;
+    }
+
+    grow(amount) {
+        this.size += amount;
+    }
+
+    toggleShield(duration) {
+        this.shield = true;
+        clearTimeout(this.shieldTimer);
+        this.shieldTimer = setTimeout(() => {
+            this.shield = false;
+        }, duration);
+    }
+
+    boostSpeed(duration) {
+        this.speedBoost = true;
+        this.currentSpeed = this.baseSpeed * 1.5;
+        clearTimeout(this.speedBoostTimer);
+        this.speedBoostTimer = setTimeout(() => {
+            this.speedBoost = false;
+            this.currentSpeed = this.baseSpeed;
+        }, duration);
+    }
+}
+
+class Bubble {
+    constructor(x, y, size, speed, isRogue = false) {
+        this.x = x;
+        this.y = y;
+        this.size = size;
+        this.speed = speed;
+        this.isRogue = isRogue;
+        this.direction = {
+            x: (Math.random() - 0.5) * 2,
+            y: (Math.random() - 0.5) * 2
+        };
+    }
+
+    update(canvas) {
+        // More complex movement for rogue bubbles
+        if (this.isRogue) {
+            this.x += this.direction.x * this.speed * 1.5;
+            this.y += this.direction.y * this.speed * 1.5;
+
+            // Bounce off walls
+            if (this.x < 0 || this.x > canvas.width) {
+                this.direction.x *= -1;
+            }
+            if (this.y < 0 || this.y > canvas.height) {
+                this.direction.y *= -1;
+            }
+        } else {
+            // Normal random walk
+            this.x += (Math.random() - 0.5) * this.speed;
+            this.y += (Math.random() - 0.5) * this.speed;
+        }
+    }
+
+    draw(ctx) {
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, 2 * Math.PI);
+        ctx.fillStyle = this.isRogue 
+            ? 'rgba(255, 0, 0, 0.6)' 
+            : 'rgba(255, 255, 255, 0.6)';
+        ctx.fill();
+    }
+}
+
+class SharpObstacle {
+    constructor(x, y, size, speed) {
+        this.x = x;
+        this.y = y;
+        this.size = size;
+        this.speed = speed;
+        this.direction = {
+            x: (Math.random() - 0.5) * 2,
+            y: (Math.random() - 0.5) * 2
+        };
+    }
+
+    update(canvas) {
+        this.x += this.direction.x * this.speed;
+        this.y += this.direction.y * this.speed;
+
+        // Bounce off walls
+        if (this.x < 0 || this.x > canvas.width) {
+            this.direction.x *= -1;
+        }
+        if (this.y < 0 || this.y > canvas.height) {
+            this.direction.y *= -1;
+        }
+    }
+
+    draw(ctx) {
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, 2 * Math.PI);
+        ctx.fillStyle = 'rgba(231, 76, 60, 0.8)';
+        ctx.fill();
+    }
+}
+
+class PowerUp {
+    constructor(x, y, size, typeInfo) {
+        this.x = x;
+        this.y = y;
+        this.size = size;
+        this.type = typeInfo.type;
+        this.color = typeInfo.color;
+        this.oscillation = 0;
+    }
+
+    update() {
+        // Simple floating effect
+        this.oscillation += 0.1;
+        this.y += Math.sin(this.oscillation) * 0.5;
+    }
+
+    draw(ctx) {
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, 2 * Math.PI);
+        ctx.fillStyle = this.color;
+        ctx.fill();
+    }
+}
+
+class MovingWall {
+    constructor(x, y, size, direction, speed) {
+        this.x = x;
+        this.y = y;
+        this.size = size;
+        this.direction = direction;
+        this.speed = speed;
+        this.rotation = 0;
+    }
+
+    update(canvas) {
+        this.x += this.direction * this.speed;
+        this.rotation += 0.05;
+
+        // Bounce off walls
+        if (this.x + this.size > canvas.width || this.x < 0) {
+            this.direction *= -1;
+        }
+    }
+
+    draw(ctx) {
+        ctx.save();
+        ctx.translate(this.x + this.size/2, this.y + this.size/2);
+        ctx.rotate(this.rotation);
+        ctx.fillStyle = 'rgba(155, 89, 182, 0.7)';
+        ctx.fillRect(-this.size/2, -this.size/2, this.size, this.size);
+        ctx.restore();
+    }
+}
+
+class Trap {
+    constructor(x, y, size) {
+        this.x = x;
+        this.y = y;
+        this.size = size;
+        this.opacity = 0.7;
+        this.growing = true;
+    }
+
+    update() {
+        // Pulsating effect
+        if (this.growing) {
+            this.opacity += 0.02;
+            if (this.opacity >= 1) this.growing = false;
+        } else {
+            this.opacity -= 0.02;
+            if (this.opacity <= 0.5) this.growing = true;
+        }
+    }
+
+    draw(ctx) {
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, 2 * Math.PI);
+        ctx.fillStyle = `rgba(214, 48, 49, ${this.opacity})`;
+        ctx.fill();
+    }
+}
+
+window.onload = () => {
+    new GreedyBubbleGame();
+};
+</script>
+</body>
+</html>
